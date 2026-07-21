@@ -1,0 +1,2029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Floor — Table Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14110D;
+    --surface:#1D1810;
+    --surface-2:#28211A;
+    --surface-3:#332A20;
+    --line: rgba(242,234,217,0.09);
+    --cream:#F2EAD9;
+    --muted:#A79C89;
+    --amber:#D9A441;
+    --amber-dim: rgba(217,164,65,0.16);
+    --free:#3FB27F;
+    --free-dim: rgba(63,178,127,0.18);
+    --occupied:#E15554;
+    --occupied-dim: rgba(225,85,84,0.20);
+    --blue:#5B9BD1;
+    --blue-dim: rgba(91,155,209,0.18);
+    --radius: 16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--cream);
+    font-family:'Inter', system-ui, -apple-system, sans-serif;
+    overflow:hidden;
+    position:fixed;
+    inset:0;
+  }
+  .num, .tablelabel, .total, .brand, .bigdigits{ font-family:'Space Grotesk', 'Inter', sans-serif; }
+
+  #app{ height:100%; display:flex; flex-direction:column; }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    flex:0 0 auto;
+    background:var(--surface);
+    border-bottom:1px solid var(--line);
+    padding:10px 12px 8px;
+  }
+  .topbar-row1{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:8px; gap:8px;
+  }
+  .brand{ font-size:15px; font-weight:700; letter-spacing:0.02em; color:var(--cream); display:flex; align-items:center; gap:8px; flex:0 0 auto;}
+  .brand .dot{ width:8px; height:8px; border-radius:50%; background:var(--amber); }
+
+  .rooms-row{ display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+  .rooms-row::-webkit-scrollbar{ display:none; }
+  .room-chip{
+    flex:0 0 auto;
+    padding:7px 13px;
+    border-radius:999px;
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    color:var(--muted);
+    font-size:13px; font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .room-chip.active{ background:var(--amber-dim); border-color:var(--amber); color:var(--amber); }
+  .room-chip.addchip{ color:var(--amber); font-size:16px; padding:7px 12px; }
+
+  /* ---------- Floor grid ---------- */
+  .floor-area{ flex:1 1 auto; position:relative; overflow:hidden; }
+  .floor-wrap{ position:absolute; inset:0; overflow:auto; touch-action:none;
+    background-image: radial-gradient(circle, rgba(242,234,217,0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  .floor{
+    position:relative;
+    width:1100px;
+    height:1500px;
+    transform-origin: 0 0;
+    transition: transform .08s ease-out;
+  }
+  .empty-hint{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:10px; color:var(--muted); text-align:center; padding:30px; pointer-events:none;
+  }
+  .empty-hint .big{ font-size:15px; color:var(--cream); font-weight:600; }
+  .empty-hint .small{ font-size:13px; max-width:260px; line-height:1.5; }
+
+  .table-el{
+    position:absolute;
+    width:76px; height:76px;
+    transform: translate(-50%,-50%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: var(--free-dim);
+    border:2px solid var(--free);
+    color:var(--cream);
+    cursor:pointer;
+    user-select:none;
+    touch-action:none;
+    transition: background .15s, border-color .15s;
+    padding:4px;
+  }
+  .table-el.shape-circle{ border-radius:50%; }
+  .table-el.shape-square{ border-radius:14px; }
+  .table-el.merged{ width:136px; border-radius:20px; }
+  .table-el.occupied{ background:var(--occupied-dim); border-color:var(--occupied); }
+  .table-el.dragging{ opacity:0.75; z-index:50; }
+  .table-el .tablelabel{ font-size:14px; font-weight:700; line-height:1.1; text-align:center; }
+  .table-el .subinfo{ font-size:10px; color:var(--muted); margin-top:3px; line-height:1.2; text-align:center; }
+  .table-el.occupied .subinfo{ color:#f0c9c8; }
+  .table-el .subinfo.total{ font-weight:700; color:var(--cream); font-size:11px; }
+
+  .table-gear{
+    position:absolute; top:-10px; right:-10px;
+    width:30px; height:30px; border-radius:50%;
+    background:var(--surface-3); border:1.5px solid var(--amber);
+    display:flex; align-items:center; justify-content:center;
+    font-size:15px; color:var(--cream);
+    cursor:pointer;
+    transform-origin: top right;
+    box-shadow:0 2px 6px rgba(0,0,0,0.4);
+  }
+  .new-order-badge{
+    position:absolute; top:-10px; left:-10px;
+    width:20px; height:20px; border-radius:50%;
+    background:var(--amber); color:#241A08;
+    display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:800;
+    transform-origin: top left;
+    animation: pulse 1.4s infinite;
+    pointer-events:none;
+  }
+
+  .fab{
+    position:absolute; right:16px; bottom:16px;
+    width:52px; height:52px; border-radius:50%;
+    background:var(--amber); color:#241A08;
+    display:flex; align-items:center; justify-content:center;
+    font-size:26px; font-weight:700;
+    box-shadow:0 6px 18px rgba(0,0,0,0.4);
+    cursor:pointer; border:none; z-index:20;
+  }
+
+  /* ---------- Legend / footer ---------- */
+  .legend-pill{
+    position:absolute; top:12px; left:12px; z-index:5;
+    display:flex; gap:12px; background:rgba(29,24,16,0.88); border:1px solid var(--line);
+    border-radius:999px; padding:7px 14px; font-size:10.5px; color:var(--muted);
+    pointer-events:none;
+  }
+  .legend-pill span{ display:inline-flex; align-items:center; gap:5px; }
+  .legend-pill i{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .legend-pill .lf{ background:var(--free); }
+  .legend-pill .lo{ background:var(--occupied); }
+
+  .zoom-controls{
+    position:absolute; left:12px; bottom:12px; z-index:20;
+    display:flex; align-items:center; gap:2px;
+    background:rgba(29,24,16,0.92); border:1px solid var(--line); border-radius:999px; padding:4px;
+  }
+  .zoom-btn{
+    width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:17px; font-weight:700; color:var(--cream); cursor:pointer; flex:0 0 auto;
+  }
+  .zoom-btn:active{ background:var(--surface-3); }
+  .zoom-label{ font-size:11px; color:var(--muted); font-weight:700; min-width:38px; text-align:center; cursor:pointer; }
+
+  .bottomnav{
+    flex:0 0 auto; display:flex; background:var(--surface); border-top:1px solid var(--line);
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .nav-item{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:7px 2px 5px; border-radius:12px; cursor:pointer; color:var(--muted);
+  }
+  .nav-item .ni-icon{ font-size:19px; line-height:1; }
+  .nav-item .ni-label{ font-size:10.5px; font-weight:700; letter-spacing:0.01em; }
+  .nav-item.active{ color:var(--amber); background:var(--amber-dim); }
+  .nav-item:active{ background:var(--surface-2); }
+
+  .more-row{
+    display:flex; align-items:center; gap:12px; padding:14px 4px; border-bottom:1px solid var(--line); cursor:pointer;
+  }
+  .more-row .mr-icon{ font-size:20px; flex:0 0 auto; width:26px; text-align:center; }
+  .more-row .mr-label{ font-size:14.5px; font-weight:700; flex:0 0 auto; }
+  .more-row .mr-sub{ font-size:11.5px; color:var(--muted); flex:1; text-align:right; }
+  .more-row.danger .mr-label{ color:var(--occupied); }
+  .more-row:active{ background:var(--surface-2); }
+  .more-footer{ text-align:center; color:var(--amber); opacity:0.55; font-size:11px; font-weight:600; padding:18px 0 4px; }
+
+  /* ---------- Modal shell ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(10,8,5,0.72);
+    display:flex; align-items:flex-end; justify-content:center;
+    z-index:100; opacity:0; pointer-events:none; transition:opacity .18s;
+  }
+  .overlay.show{ opacity:1; pointer-events:auto; }
+  .sheet{
+    background:var(--surface); width:100%; max-width:480px;
+    border-radius:22px 22px 0 0; border:1px solid var(--line); border-bottom:none;
+    max-height:88vh; display:flex; flex-direction:column;
+    transform: translateY(20px); transition: transform .18s;
+  }
+  .overlay.show .sheet{ transform: translateY(0); }
+  .sheet.center{ border-radius:20px; border-bottom:1px solid var(--line); margin:auto 16px; max-height:80vh; }
+  .sheet-head{
+    padding:16px 18px 10px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--line); flex:0 0 auto;
+  }
+  .sheet-title{ font-size:16px; font-weight:700; }
+  .sheet-sub{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .sheet-body{ padding:14px 18px 18px; overflow-y:auto; flex:1 1 auto; }
+  .close-x{ color:var(--muted); font-size:20px; cursor:pointer; padding:4px 8px; }
+
+  /* ---------- Forms ---------- */
+  label.f-label{ font-size:12px; color:var(--muted); font-weight:600; display:block; margin:12px 0 6px; }
+  label.f-label:first-child{ margin-top:0; }
+  input[type=text], input[type=number]{
+    width:100%; background:var(--surface-2); border:1px solid var(--line); color:var(--cream);
+    border-radius:10px; padding:11px 12px; font-size:15px; font-family:inherit;
+  }
+  input:focus{ outline:none; border-color:var(--amber); }
+  .row2{ display:flex; gap:10px; }
+  .row2 > *{ flex:1; }
+  .shape-toggle{ display:flex; gap:8px; }
+  .shape-opt{
+    flex:1; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--surface-2);
+    text-align:center; font-size:13px; color:var(--muted); cursor:pointer; font-weight:600;
+  }
+  .shape-opt.active{ border-color:var(--amber); color:var(--amber); background:var(--amber-dim); }
+
+  .btn{
+    width:100%; padding:13px; border-radius:12px; border:none; font-size:14px; font-weight:700;
+    cursor:pointer; margin-top:14px; font-family:inherit;
+  }
+  .btn-primary{ background:var(--amber); color:#241A08; }
+  .btn-free{ background:var(--free); color:#0B2118; }
+  .btn-danger{ background:var(--occupied); color:#2A0B0B; }
+  .btn-blue{ background:var(--blue); color:#0B1E2A; }
+  .btn-ghost{ background:var(--surface-2); color:var(--cream); border:1px solid var(--line); }
+  .btn-sm{ width:auto; padding:8px 14px; font-size:12px; margin-top:0; }
+
+  /* ---------- Order modal ---------- */
+  .order-total-bar{
+    display:flex; justify-content:space-between; align-items:baseline;
+    background:var(--surface-2); border-radius:12px; padding:12px 14px; margin-bottom:6px;
+  }
+  .order-total-bar .lbl{ font-size:12px; color:var(--muted); font-weight:600; }
+  .order-total-bar .amt{ font-size:22px; font-weight:700; color:var(--amber); }
+
+  .autocomplete-wrap{ position:relative; }
+  .time-strip{
+    display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted);
+    background:var(--surface-2); border-radius:10px; padding:8px 12px; margin:8px 0 14px;
+    border:1px solid var(--line);
+  }
+  .time-strip b{ color:var(--cream); font-weight:700; }
+  .suggest-list{
+    margin-top:8px; display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;
+  }
+  .suggest-item{
+    display:flex; justify-content:space-between; align-items:center;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+    cursor:pointer; font-size:14px;
+  }
+  .suggest-item:active{ background:var(--surface-3); }
+  .suggest-item .p{ color:var(--amber); font-weight:700; font-size:13px; }
+  .no-match{ font-size:12.5px; color:var(--muted); padding:10px 2px; }
+
+  .order-lines{ margin-top:16px; display:flex; flex-direction:column; gap:8px; }
+  .order-line{
+    display:flex; align-items:center; gap:10px; background:var(--surface-2);
+    border-radius:10px; padding:9px 10px; border:1px solid var(--line);
+    margin-bottom:8px;
+  }
+  .order-line.unsent{ border-color:var(--amber); background:var(--amber-dim); }
+  .order-line.sent{ opacity:0.72; }
+  .order-group-hdr{
+    font-size:11.5px; font-weight:800; letter-spacing:0.02em; text-transform:uppercase;
+    margin:14px 0 8px; padding-bottom:4px; border-bottom:1px solid var(--line);
+  }
+  .order-group-hdr.new{ color:var(--amber); }
+  .order-group-hdr.sent{ color:var(--muted); }
+  .order-group-hdr:first-child{ margin-top:0; }
+  .ol-name{ flex:1; font-size:14px; font-weight:600; }
+  .ol-price{ font-size:11.5px; color:var(--muted); }
+  .qty-ctrl{ display:flex; align-items:center; gap:8px; }
+  .qty-btn{
+    width:26px; height:26px; border-radius:7px; background:var(--surface-3); border:1px solid var(--line);
+    color:var(--cream); font-size:15px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  .qty-num{ font-size:14px; font-weight:700; min-width:16px; text-align:center; }
+  .ol-remove{ color:var(--occupied); font-size:16px; padding:4px; cursor:pointer; }
+  .ol-sub{ font-size:13px; font-weight:700; min-width:56px; text-align:right; }
+  .empty-order{ font-size:12.5px; color:var(--muted); padding:14px 0; text-align:center; }
+
+  /* ---------- Menu list ---------- */
+  .menu-item-row{
+    display:flex; align-items:center; gap:10px; padding:11px 4px; border-bottom:1px solid var(--line);
+  }
+  .menu-item-row .mi-name{ flex:1; font-size:14.5px; font-weight:600; }
+  .menu-item-row .mi-price{ font-size:13px; color:var(--amber); font-weight:700; }
+  .menu-item-row .mi-del{ color:var(--muted); font-size:16px; cursor:pointer; padding:2px 6px; }
+  .menu-add-row{ display:flex; gap:8px; margin-top:14px; }
+  .menu-add-row input[type=text]{ flex:2; }
+  .menu-add-row input[type=number]{ flex:1; }
+
+  /* ---------- History / notes ---------- */
+  .hist-row{
+    padding:11px 2px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:2px;
+  }
+  .hist-row .h-top{ display:flex; justify-content:space-between; font-size:14px; font-weight:700; }
+  .hist-row .h-bottom{ font-size:11.5px; color:var(--muted); }
+  .hist-empty{ font-size:13px; color:var(--muted); text-align:center; padding:24px 0; }
+
+  .note-row{ padding:11px 2px; border-bottom:1px solid var(--line); }
+  .note-row .n-text{ font-size:14px; white-space:pre-wrap; line-height:1.4; }
+  .note-row .n-meta{ display:flex; justify-content:space-between; margin-top:6px; font-size:11px; color:var(--muted); }
+  .note-row .n-del{ color:var(--occupied); cursor:pointer; }
+  textarea{
+    width:100%; background:var(--surface-2); border:1px solid var(--line); color:var(--cream);
+    border-radius:10px; padding:11px 12px; font-size:14.5px; font-family:inherit; resize:vertical; min-height:70px;
+  }
+  textarea:focus{ outline:none; border-color:var(--amber); }
+
+  /* ---------- Shift ---------- */
+  .shift-status{
+    background:var(--surface-2); border:1px solid var(--line); border-radius:14px; padding:16px; text-align:center;
+  }
+  .shift-status .ss-label{ font-size:12px; color:var(--muted); font-weight:600; }
+  .shift-status .ss-time{ font-size:26px; font-weight:700; margin:4px 0; }
+  .shift-status .ss-sub{ font-size:12px; color:var(--muted); }
+  .shift-month-sum{
+    background:var(--amber-dim); border:1px solid var(--amber);
+    border-radius:12px; padding:12px 14px; margin:14px 0 4px; font-size:12.5px; color:var(--amber); font-weight:600;
+  }
+  .shift-month-sum .sms-row{ display:flex; justify-content:space-between; align-items:center; }
+  .shift-month-sum .sms-row + .sms-row{ margin-top:8px; padding-top:8px; border-top:1px solid rgba(217,164,65,0.35); }
+  .shift-month-sum b{ font-size:16px; }
+  .shift-month-sum .sms-row.overtime-row b{ color:var(--occupied); }
+
+  .sync-dot{ width:8px; height:8px; border-radius:50%; background:var(--muted); flex:0 0 auto; margin-left:2px; transition:background .2s; cursor:default; }
+  .sync-dot.ok{ background:var(--free); }
+  .sync-dot.saving{ background:var(--amber); animation:pulse 1s infinite; }
+  .sync-dot.err{ background:var(--occupied); }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+  .save-banner{
+    position:fixed; top:0; left:0; right:0; background:var(--occupied); color:#2A0B0B;
+    font-size:12px; font-weight:700; text-align:center; padding:7px; z-index:300;
+    transform:translateY(-100%); transition:transform .2s;
+  }
+  .save-banner.show{ transform:translateY(0); }
+
+  .tip-row{ display:flex; align-items:center; gap:10px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:6px; }
+  .tip-row label{ font-size:12px; color:var(--muted); font-weight:600; flex:0 0 auto; }
+  .tip-row input{ text-align:right; }
+
+  .earn-today{ background:var(--amber-dim); border:1px solid var(--amber); border-radius:14px; padding:16px; }
+  .earn-today .et-row{ display:flex; justify-content:space-between; align-items:center; padding:6px 0; }
+  .earn-today .et-row.total{ border-top:1px solid rgba(217,164,65,0.35); margin-top:6px; padding-top:12px; }
+  .earn-today .et-label{ font-size:12.5px; color:var(--muted); font-weight:600; }
+  .earn-today .et-val{ font-size:16px; font-weight:700; color:var(--amber); }
+  .earn-today .et-row.total .et-val{ font-size:20px; }
+  .earn-day-row{ padding:10px 2px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; font-size:13px; }
+  .earn-day-row .ed-date{ font-weight:700; }
+  .earn-day-row .ed-nums{ color:var(--muted); text-align:right; }
+
+  .layout-info{ font-size:12.5px; color:var(--muted); line-height:1.6; margin-bottom:6px; }
+  .row-del{ color:var(--occupied); font-size:13px; font-weight:600; cursor:pointer; padding:2px 8px; flex:0 0 auto; }
+
+  /* ---------- Calculator ---------- */
+  .calc-display{
+    background:var(--surface-2); border:1px solid var(--line); border-radius:12px; padding:18px 16px;
+    text-align:right; margin-bottom:12px;
+  }
+  .calc-display .cd-prev{ font-size:12px; color:var(--muted); min-height:16px; }
+  .calc-display .cd-cur{ font-size:32px; font-weight:700; word-break:break-all; }
+  .calc-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .calc-btn{
+    background:var(--surface-2); border:1px solid var(--line); color:var(--cream);
+    border-radius:12px; padding:16px 0; font-size:18px; font-weight:600; text-align:center; cursor:pointer;
+  }
+  .calc-btn:active{ background:var(--surface-3); }
+  .calc-btn.op{ background:var(--amber-dim); color:var(--amber); }
+  .calc-btn.eq{ background:var(--amber); color:#241A08; }
+  .calc-btn.wide{ grid-column: span 2; }
+
+  .toast{
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+    background:var(--surface-3); border:1px solid var(--line); color:var(--cream);
+    padding:10px 18px; border-radius:999px; font-size:13px; z-index:200;
+    opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(-6px); }
+</style>
+</head>
+<body>
+
+<div class="save-banner" id="saveBanner">⚠ Couldn't save — check you're not in private/incognito mode, or that your phone isn't out of storage</div>
+<div class="save-banner" id="protocolBanner" style="background:#ff3b30; color:#fff; font-size:13px; line-height:1.4; padding:12px;">
+  ⚠ RISK: this page was opened in an unstable way and your data may not save reliably.<br>
+  Open it from your browser's own Downloads (not the Files app), then use "Add to Home Screen" instead. Tap here to dismiss.
+</div>
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-row1">
+      <div class="brand"><span class="dot"></span>Floor<span class="sync-dot" id="syncDot" title="Save status"></span></div>
+    </div>
+    <div class="rooms-row" id="roomsRow"></div>
+  </div>
+
+  <div class="floor-area">
+    <div class="floor-wrap" id="floorWrap">
+      <div class="floor" id="floor"></div>
+    </div>
+    <div class="empty-hint" id="emptyHint" style="display:none;">
+      <div class="big">No tables in this room yet</div>
+      <div class="small">Tap the + button to drop a table on the floor, then drag it wherever you want. Drag one table onto another to combine them.</div>
+    </div>
+    <div class="legend-pill"><span><i class="lf"></i>Free</span><span><i class="lo"></i>Occupied</span></div>
+    <div class="zoom-controls">
+      <div class="zoom-btn" id="zoomOut">−</div>
+      <div class="zoom-label" id="zoomLabel">60%</div>
+      <div class="zoom-btn" id="zoomIn">+</div>
+    </div>
+    <button class="fab" id="btnAddTable">+</button>
+  </div>
+
+  <div class="bottomnav">
+    <div class="nav-item" id="navFloor"><span class="ni-icon">🏠</span><span class="ni-label">Floor</span></div>
+    <div class="nav-item" id="navMenu"><span class="ni-icon">📋</span><span class="ni-label">Menu</span></div>
+    <div class="nav-item" id="navShift"><span class="ni-icon">⏳</span><span class="ni-label">Shift</span></div>
+    <div class="nav-item" id="navEarnings"><span class="ni-icon">💰</span><span class="ni-label">Earnings</span></div>
+    <div class="nav-item" id="navMore"><span class="ni-icon">⋯</span><span class="ni-label">More</span></div>
+  </div>
+</div>
+
+<!-- MORE SHEET -->
+<div class="overlay" id="overlayMore">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="sheet-title">More</div>
+      <div class="close-x" data-close="overlayMore">✕</div>
+    </div>
+    <div class="sheet-body">
+      <div class="more-row" id="moreHistory"><span class="mr-icon">🕑</span><span class="mr-label">History</span><span class="mr-sub">Recently paid tables</span></div>
+      <div class="more-row" id="moreNotes"><span class="mr-icon">📝</span><span class="mr-label">Notes</span><span class="mr-sub">Mistakes, reminders, anything</span></div>
+      <div class="more-row" id="moreCalc"><span class="mr-icon">🧮</span><span class="mr-label">Calculator</span><span class="mr-sub">Quick maths</span></div>
+      <div class="more-row" id="moreBackup"><span class="mr-icon">💾</span><span class="mr-label">Backup & restore</span><span class="mr-sub">Save a copy outside this browser</span></div>
+      <div class="more-row" id="moreLayout"><span class="mr-icon">🧱</span><span class="mr-label">Layout tools</span><span class="mr-sub">Save / reset your table arrangement</span></div>
+      <div class="more-row danger" id="moreReset"><span class="mr-icon">⚠</span><span class="mr-label">Reset app data</span><span class="mr-sub">Wipe everything except your menu</span></div>
+      <div class="more-footer">Programmed by Eren Murtishi<br><span style="opacity:0.6;">build check: ROUNDS-TIDY-GEAR-1</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ORDER SHEET -->
+<div class="overlay" id="overlayOrder">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div>
+        <div class="sheet-title" id="orderTitle">Table</div>
+        <div class="sheet-sub" id="orderSub"></div>
+      </div>
+      <div class="close-x" data-close="overlayOrder">✕</div>
+    </div>
+    <div class="sheet-body">
+      <div class="order-total-bar">
+        <div><div class="lbl">Total</div></div>
+        <div class="amt" id="orderTotal">0 ден</div>
+      </div>
+      <div class="tip-row">
+        <label for="tipInput">Tip (ден)</label>
+        <input type="number" id="tipInput" placeholder="0" min="0">
+      </div>
+
+      <label class="f-label">Add item</label>
+      <div class="autocomplete-wrap">
+        <input type="text" id="itemInput" placeholder="Start typing e.g. ess...">
+      </div>
+      <div class="time-strip">
+        <span>Order started: <b id="servedAtTime">—</b></span>
+        <span>Now (Skopje): <b id="nowTime">—</b></span>
+      </div>
+      <div class="suggest-list" id="suggestList"></div>
+
+      <div class="order-lines" id="orderLines"></div>
+
+      <button class="btn btn-blue" id="btnSendToBar" style="display:none;">📣 Send new items to the bar</button>
+      <button class="btn btn-free" id="btnMarkPaid">✓ Mark paid & clear table</button>
+      <button class="btn btn-ghost" id="btnClearNoSave">Empty table without saving (mistake)</button>
+    </div>
+  </div>
+</div>
+
+<!-- TABLE SETTINGS SHEET -->
+<div class="overlay" id="overlayTableSettings">
+  <div class="sheet sheet-narrow">
+    <div class="sheet-head">
+      <div class="sheet-title">Table settings</div>
+      <div class="close-x" data-close="overlayTableSettings">✕</div>
+    </div>
+    <div class="sheet-body">
+      <label class="f-label">Label</label>
+      <input type="text" id="tsLabel" maxlength="8">
+      <label class="f-label">Shape</label>
+      <div class="shape-toggle">
+        <div class="shape-opt" id="tsShapeCircle">● Circle</div>
+        <div class="shape-opt" id="tsShapeSquare">■ Square</div>
+      </div>
+      <button class="btn btn-primary" id="btnSaveTableSettings">Save</button>
+      <button class="btn btn-blue" id="btnSplitTable" style="display:none;">Split combined tables</button>
+      <button class="btn btn-danger" id="btnDeleteTable">Delete table</button>
+    </div>
+  </div>
+</div>
+
+<!-- MENU SHEET -->
+<div class="overlay" id="overlayMenu">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="sheet-title">Menu &amp; prices</div>
+      <div class="close-x" data-close="overlayMenu">✕</div>
+    </div>
+    <div class="sheet-body">
+      <div id="menuList"></div>
+      <div class="menu-add-row">
+        <input type="text" id="menuNewName" placeholder="Item name">
+        <input type="number" id="menuNewPrice" placeholder="Price">
+      </div>
+      <button class="btn btn-primary" id="btnAddMenuItem">+ Add item</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD ROOM SHEET -->
+<div class="overlay" id="overlayAddRoom">
+  <div class="sheet sheet-narrow">
+    <div class="sheet-head">
+      <div class="sheet-title">New room</div>
+      <div class="close-x" data-close="overlayAddRoom">✕</div>
+    </div>
+    <div class="sheet-body">
+      <label class="f-label">Room name</label>
+      <input type="text" id="newRoomName" placeholder="e.g. Outside, Terrace, Upstairs">
+      <button class="btn btn-primary" id="btnCreateRoom">Create room</button>
+    </div>
+  </div>
+</div>
+
+<!-- MANAGE ROOM SHEET -->
+<div class="overlay" id="overlayManageRoom">
+  <div class="sheet sheet-narrow">
+    <div class="sheet-head">
+      <div class="sheet-title">Room settings</div>
+      <div class="close-x" data-close="overlayManageRoom">✕</div>
+    </div>
+    <div class="sheet-body">
+      <label class="f-label">Room name</label>
+      <input type="text" id="renameRoomInput">
+      <button class="btn btn-primary" id="btnSaveRoomName">Save name</button>
+      <button class="btn btn-danger" id="btnDeleteRoom">Delete this room</button>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY SHEET -->
+<div class="overlay" id="overlayHistory">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div>
+        <div class="sheet-title">Recent paid tables</div>
+        <div class="sheet-sub">Skopje time · last 40 entries</div>
+      </div>
+      <div class="close-x" data-close="overlayHistory">✕</div>
+    </div>
+    <div class="sheet-body" id="historyList"></div>
+  </div>
+</div>
+
+<!-- NOTES SHEET -->
+<div class="overlay" id="overlayNotes">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="sheet-title">Notes</div>
+      <div class="close-x" data-close="overlayNotes">✕</div>
+    </div>
+    <div class="sheet-body">
+      <textarea id="noteInput" placeholder="e.g. Printed wrong bill for T4, voided it, don't charge twice..."></textarea>
+      <button class="btn btn-primary" id="btnAddNote">+ Add note</button>
+      <div id="notesList" style="margin-top:16px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SHIFT SHEET -->
+<div class="overlay" id="overlayShift">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="sheet-title">Shift tracker</div>
+      <div class="close-x" data-close="overlayShift">✕</div>
+    </div>
+    <div class="sheet-body">
+      <div class="shift-status" id="shiftStatus"></div>
+      <button class="btn btn-free" id="btnShiftToggle">Start shift</button>
+
+      <label class="f-label">Standard shift length (hours)</label>
+      <input type="number" id="standardHours" step="0.5" min="0">
+
+      <div class="shift-month-sum" id="monthSummary"></div>
+
+      <label class="f-label" style="margin-top:18px;">Shift history</label>
+      <div id="shiftHistoryList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- EARNINGS SHEET -->
+<div class="overlay" id="overlayEarnings">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div>
+        <div class="sheet-title">Earnings</div>
+        <div class="sheet-sub">Tied to your clock-in/out, not the clock</div>
+      </div>
+      <div class="close-x" data-close="overlayEarnings">✕</div>
+    </div>
+    <div class="sheet-body">
+      <div class="earn-today" id="earnToday"></div>
+      <label class="f-label" style="margin-top:18px;">Past shifts</label>
+      <div id="earnDaysList"></div>
+      <div id="earnOffShift" style="margin-top:6px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- BACKUP SHEET -->
+<div class="overlay" id="overlayBackup">
+  <div class="sheet sheet-narrow">
+    <div class="sheet-head">
+      <div class="sheet-title">Backup & restore</div>
+      <div class="close-x" data-close="overlayBackup">✕</div>
+    </div>
+    <div class="sheet-body">
+      <div class="layout-info">This saves everything in the app — tables, menu, orders, notes, shifts and earnings — into one small file. Save that file to Google Drive, email it to yourself, or send it to yourself on WhatsApp, so it's safe even if this phone's browser data ever gets cleared.</div>
+      <div class="sheet-sub" id="lastBackupInfo" style="margin-bottom:10px;"></div>
+      <button class="btn btn-primary" id="btnDownloadBackup">⬇ Download backup file</button>
+      <button class="btn btn-blue" id="btnRestoreBackup">⬆ Restore from a backup file</button>
+      <input type="file" id="restoreFileInput" accept="application/json,.json" style="display:none;">
+    </div>
+  </div>
+</div>
+
+<!-- LAYOUT TOOLS SHEET -->
+<div class="overlay" id="overlayLayout">
+  <div class="sheet sheet-narrow">
+    <div class="sheet-head">
+      <div class="sheet-title">Layout tools</div>
+      <div class="close-x" data-close="overlayLayout">✕</div>
+    </div>
+    <div class="sheet-body">
+      <div class="layout-info">Your table layout already saves automatically forever — you only need to build it once. This is an extra safety net: save a clean snapshot of your layout, and if you combine tables or drag things around during a shift and forget to undo it, reset back to that snapshot in one tap. Current orders are never touched by reset or tidy.</div>
+      <div class="sheet-sub" id="layoutSavedInfo" style="margin-bottom:10px;"></div>
+      <button class="btn btn-primary" id="btnSaveLayout">Save current arrangement as my layout</button>
+      <button class="btn btn-blue" id="btnResetLayout">Reset tables to saved layout</button>
+      <label class="f-label" style="margin-top:18px;">Tidy up</label>
+      <div class="layout-info">Straightens every table in this room into a neat aligned grid, keeping labels, shapes and any active orders exactly as they are — just repositioned.</div>
+      <button class="btn btn-ghost" id="btnTidyRoom">🧹 Align tables in this room</button>
+    </div>
+  </div>
+</div>
+
+<!-- CALCULATOR SHEET -->
+<div class="overlay" id="overlayCalc">
+  <div class="sheet sheet-narrow">
+    <div class="sheet-head">
+      <div class="sheet-title">Calculator</div>
+      <div class="close-x" data-close="overlayCalc">✕</div>
+    </div>
+    <div class="sheet-body">
+      <div class="calc-display">
+        <div class="cd-prev" id="calcPrev">&nbsp;</div>
+        <div class="cd-cur bigdigits" id="calcCur">0</div>
+      </div>
+      <div class="calc-grid" id="calcGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM SHEET -->
+<div class="overlay" id="overlayConfirm">
+  <div class="sheet sheet-narrow">
+    <div class="sheet-head">
+      <div class="sheet-title" id="confirmTitle">Are you sure?</div>
+      <div class="close-x" data-close="overlayConfirm">✕</div>
+    </div>
+    <div class="sheet-body">
+      <div class="sheet-sub" id="confirmBody" style="margin-bottom:14px;"></div>
+      <button class="btn btn-danger" id="btnConfirmYes">Yes</button>
+      <button class="btn btn-ghost" id="btnConfirmNo">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  const STORAGE_KEY = "cafe-floor-state-v3";
+  let saveTimer = null;
+
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+  function blankTable(id, roomId, label, x, y, extra){
+    return Object.assign({
+      id: id, roomId: roomId, label: label, shape: 'circle', x: x, y: y,
+      status: 'free', startTime: null, items: [],
+      merged: false, mergedPartnerId: null, hidden: false, hiddenBy: null,
+      originalLabel: null, originalX: null, originalY: null
+    }, extra || {});
+  }
+
+  function buildRecoveredLayout(roomId){
+    // recreates the exact floor layout from the user's screenshot after the content:// data-loss incident,
+    // so nothing has to be rebuilt from scratch. T3-T2 and T8-T7 are combined tables, same as shown.
+    const t2 = blankTable(uid(), roomId, 'T2', 680, 80, { hidden: true });
+    const t3 = blankTable(uid(), roomId, 'T3', 620, 80, { merged: true, mergedPartnerId: t2.id, originalLabel: 'T3', originalX: 560, originalY: 80, label: 'T3-T2' });
+    t2.hiddenBy = t3.id;
+
+    const t7 = blankTable(uid(), roomId, 'T7', 860, 220, { hidden: true });
+    const t8 = blankTable(uid(), roomId, 'T8', 800, 220, { merged: true, mergedPartnerId: t7.id, originalLabel: 'T8', originalX: 740, originalY: 220, label: 'T8-T7' });
+    t7.hiddenBy = t8.id;
+
+    return [
+      blankTable(uid(), roomId, 'T1', 440, 80),
+      t3, t2,
+      blankTable(uid(), roomId, 'T4', 920, 80),
+      blankTable(uid(), roomId, 'T5', 440, 220),
+      blankTable(uid(), roomId, 'T6', 560, 220),
+      t8, t7,
+      blankTable(uid(), roomId, 'T15', 80, 360),
+      blankTable(uid(), roomId, 'T16', 200, 360),
+      blankTable(uid(), roomId, 'T9', 440, 500),
+      blankTable(uid(), roomId, 'T10', 680, 500),
+      blankTable(uid(), roomId, 'T11', 920, 500),
+      blankTable(uid(), roomId, 'T17', 80, 640),
+      blankTable(uid(), roomId, 'T18', 200, 640),
+      blankTable(uid(), roomId, 'T12', 440, 780),
+      blankTable(uid(), roomId, 'T13', 680, 780),
+      blankTable(uid(), roomId, 'T14', 920, 780)
+    ];
+  }
+
+  function defaultState(){
+    const roomId = uid();
+    return {
+      rooms: [{ id: roomId, name: "Main room" }],
+      activeRoomId: roomId,
+      tables: buildRecoveredLayout(roomId),
+      menu: [
+        { id: uid(), name: "Espresso", price: 60 },
+        { id: uid(), name: "Macchiato", price: 70 },
+        { id: uid(), name: "Cappuccino", price: 80 },
+        { id: uid(), name: "Cocktail", price: 250 }
+      ],
+      history: [],
+      notes: [],
+      shift: { active: false, startTs: null, shiftDate: null, sessionId: null },
+      shiftHistory: [],
+      settings: { standardShiftHours: 8 },
+      layoutSnapshot: null,
+      layoutSnapshotSavedAt: null,
+      lastBackupAt: null,
+      zoomLevel: 0.6,
+      positionUnit: 'px'
+    };
+  }
+
+  let state = defaultState();
+  let openTableId = null;
+  let settingsTableId = null;
+  let confirmCallback = null;
+
+  // ---------- persistence (uses this device's local storage — works fully standalone, no internet needed) ----------
+  function migrateLegacyPositions(parsedRaw){
+    if(parsedRaw && parsedRaw.positionUnit === 'px'){ state.positionUnit = 'px'; return; }
+    // older saves stored table positions as 0-100 percentages of whatever the canvas size was at the time —
+    // migrate them once to fixed pixel coordinates on the base canvas so positions stay stable forever after
+    state.tables.forEach(function(t){
+      t.x = (t.x / 100) * CANVAS_BASE_WIDTH;
+      t.y = (t.y / 100) * CANVAS_BASE_HEIGHT;
+      if(typeof t.originalX === 'number') t.originalX = (t.originalX / 100) * CANVAS_BASE_WIDTH;
+      if(typeof t.originalY === 'number') t.originalY = (t.originalY / 100) * CANVAS_BASE_HEIGHT;
+    });
+    if(state.layoutSnapshot){
+      Object.keys(state.layoutSnapshot).forEach(function(id){
+        const snap = state.layoutSnapshot[id];
+        snap.x = (snap.x / 100) * CANVAS_BASE_WIDTH;
+        snap.y = (snap.y / 100) * CANVAS_BASE_HEIGHT;
+      });
+    }
+    state.positionUnit = 'px';
+    saveStateNow(); // persist the migrated positions right away, not just in memory
+  }
+
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        if(parsed && parsed.rooms && parsed.rooms.length){
+          state = Object.assign(defaultState(), parsed);
+          if(!state.notes) state.notes = [];
+          if(!state.shift) state.shift = { active:false, startTs:null, shiftDate:null, sessionId:null };
+          if(state.shift.sessionId === undefined) state.shift.sessionId = null;
+          if(!state.shiftHistory) state.shiftHistory = [];
+          if(!state.settings) state.settings = { standardShiftHours: 8 };
+          if(state.layoutSnapshot === undefined) state.layoutSnapshot = null;
+          if(state.layoutSnapshotSavedAt === undefined) state.layoutSnapshotSavedAt = null;
+          if(state.lastBackupAt === undefined) state.lastBackupAt = null;
+          if(typeof state.zoomLevel !== 'number') state.zoomLevel = 1;
+          migrateLegacyPositions(parsed);
+        }
+      }
+    }catch(e){
+      console.log("No saved state yet, or couldn't read it — starting fresh.", e);
+    }
+    renderAll();
+  }
+
+  function setSyncStatus(status){
+    const dot = document.getElementById('syncDot');
+    const banner = document.getElementById('saveBanner');
+    if(!dot) return;
+    dot.className = 'sync-dot' + (status === 'ok' ? ' ok' : status === 'saving' ? ' saving' : status === 'err' ? ' err' : '');
+    if(banner) banner.classList.toggle('show', status === 'err');
+  }
+
+  function saveStateNow(){
+    setSyncStatus('saving');
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      setSyncStatus('ok');
+    }catch(e){
+      console.error("Save failed", e);
+      setSyncStatus('err');
+      showToast("Couldn't save — your phone may be low on storage, or the browser is in private mode");
+    }
+  }
+  function saveState(){
+    clearTimeout(saveTimer);
+    setSyncStatus('saving');
+    saveTimer = setTimeout(saveStateNow, 50);
+  }
+  function flushSaveNow(){
+    clearTimeout(saveTimer);
+    saveStateNow();
+  }
+  // try to flush any pending save the moment the app is backgrounded, tab hidden, navigated, or closed —
+  // covers as many exit paths as a web page can hook into (back button, home button, app switch, closing the tab)
+  document.addEventListener('visibilitychange', function(){ if(document.hidden) flushSaveNow(); });
+  window.addEventListener('pagehide', flushSaveNow);
+  window.addEventListener('beforeunload', flushSaveNow);
+  window.addEventListener('blur', flushSaveNow);
+  window.addEventListener('popstate', flushSaveNow);
+
+  // warn loudly if this page was opened in a way that may not save reliably (e.g. content:// via a file manager,
+  // rather than file:// or https://) — this was the actual cause of a real data-loss incident
+  (function checkHostingProtocol(){
+    const proto = window.location.protocol;
+    const banner = document.getElementById('protocolBanner');
+    if(!banner) return;
+    if(proto === 'file:' || proto === 'http:' || proto === 'https:'){
+      banner.remove();
+      return;
+    }
+    banner.classList.add('show');
+    banner.addEventListener('click', function(){ banner.classList.remove('show'); });
+  })();
+
+  // ---------- helpers ----------
+  function fmtMoney(n){ return Math.round(n).toLocaleString('en-US') + " ден"; }
+
+  function skopjeTimeString(ts){
+    if(!ts) return "";
+    try{ return new Date(ts).toLocaleTimeString('en-GB', { timeZone:'Europe/Skopje', hour:'2-digit', minute:'2-digit' }); }
+    catch(e){ return new Date(ts).toLocaleTimeString(); }
+  }
+  function skopjeDateString(ts){
+    if(!ts) return "";
+    try{ return new Date(ts).toLocaleDateString('en-CA', { timeZone:'Europe/Skopje' }); } // YYYY-MM-DD
+    catch(e){ return new Date(ts).toISOString().slice(0,10); }
+  }
+  function skopjeDateTimeString(ts){
+    if(!ts) return "";
+    try{ return new Date(ts).toLocaleString('en-GB', { timeZone:'Europe/Skopje', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }); }
+    catch(e){ return new Date(ts).toLocaleString(); }
+  }
+  function niceDateLabel(dateStr){
+    try{
+      const d = new Date(dateStr + 'T12:00:00');
+      return d.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+    }catch(e){ return dateStr; }
+  }
+  function elapsedString(startTs){
+    const mins = Math.floor((Date.now() - startTs) / 60000);
+    if(mins < 1) return "just now";
+    if(mins < 60) return mins + "m ago";
+    const h = Math.floor(mins/60), m = mins % 60;
+    return h + "h " + m + "m ago";
+  }
+  function durationString(ms){
+    const totalMin = Math.round(ms/60000);
+    const h = Math.floor(totalMin/60), m = totalMin%60;
+    return h + "h " + (m<10?'0':'') + m + "m";
+  }
+
+  function currentRoom(){ return state.rooms.find(r => r.id === state.activeRoomId) || state.rooms[0]; }
+  function tablesInRoom(roomId){ return state.tables.filter(t => t.roomId === roomId); }
+  function tableTotal(t){ return t.items.reduce((s,i) => s + i.price * i.qty, 0); }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
+  }
+
+  let toastTimer = null;
+  function showToast(msg){
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+  }
+
+  function openOverlay(id){ document.getElementById(id).classList.add('show'); }
+  function closeOverlay(id){ document.getElementById(id).classList.remove('show'); }
+  function closeAllOverlays(){
+    document.querySelectorAll('.overlay.show').forEach(function(ov){ ov.classList.remove('show'); });
+  }
+  function setActiveNav(id){
+    document.querySelectorAll('.nav-item').forEach(function(el){ el.classList.remove('active'); });
+    const el = document.getElementById(id);
+    if(el) el.classList.add('active');
+  }
+  document.getElementById('navFloor').addEventListener('click', function(){ closeAllOverlays(); setActiveNav('navFloor'); });
+  document.getElementById('navMore').addEventListener('click', function(){ openOverlay('overlayMore'); setActiveNav('navMore'); });
+  setActiveNav('navFloor');
+  document.querySelectorAll('[data-close]').forEach(function(el){
+    el.addEventListener('click', function(){ closeOverlay(el.getAttribute('data-close')); setActiveNav('navFloor'); });
+  });
+  document.querySelectorAll('.overlay').forEach(function(ov){
+    ov.addEventListener('click', function(e){ if(e.target === ov){ closeOverlay(ov.id); setActiveNav('navFloor'); } });
+  });
+
+  function askConfirm(title, body, onYes){
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmBody').textContent = body;
+    confirmCallback = onYes;
+    openOverlay('overlayConfirm');
+  }
+  document.getElementById('btnConfirmYes').addEventListener('click', function(){
+    closeOverlay('overlayConfirm');
+    const cb = confirmCallback;
+    confirmCallback = null;
+    if(cb) cb();
+  });
+  document.getElementById('btnConfirmNo').addEventListener('click', function(){
+    closeOverlay('overlayConfirm');
+    confirmCallback = null;
+  });
+
+  // ================= ZOOM =================
+  const ZOOM_MIN = 0.4, ZOOM_MAX = 1.8, ZOOM_STEP = 0.1, ZOOM_ABSOLUTE_FLOOR = 0.15;
+  function getEffectiveZoomMin(){
+    let vw = 0, vh = 0;
+    const wrap = document.getElementById('floorWrap');
+    if(wrap && wrap.clientWidth && wrap.clientHeight){
+      vw = wrap.clientWidth; vh = wrap.clientHeight;
+    } else if(window.innerWidth && window.innerHeight){
+      // fall back to the window's own size minus a rough estimate of the top bar + bottom nav chrome —
+      // window.innerWidth/innerHeight are reliable even if the flex layout hasn't fully settled yet
+      vw = window.innerWidth;
+      vh = Math.max(200, window.innerHeight - 170);
+    } else {
+      return ZOOM_MIN;
+    }
+    const fitZoom = Math.min(vw / canvasW, vh / canvasH);
+    return Math.max(ZOOM_ABSOLUTE_FLOOR, Math.min(ZOOM_MIN, fitZoom));
+  }
+  function clampZoom(z){
+    const min = getEffectiveZoomMin();
+    return Math.round(Math.max(min, Math.min(ZOOM_MAX, z)) * 100) / 100;
+  }
+  function applyZoom(){
+    document.getElementById('floor').style.transform = 'scale(' + state.zoomLevel + ')';
+    document.getElementById('zoomLabel').textContent = Math.round(state.zoomLevel * 100) + '%';
+    const inv = 1 / state.zoomLevel;
+    document.querySelectorAll('.table-gear, .new-order-badge').forEach(function(el){ el.style.transform = 'scale(' + inv + ')'; });
+  }
+  document.getElementById('zoomIn').addEventListener('click', function(){
+    state.zoomLevel = clampZoom(state.zoomLevel + ZOOM_STEP);
+    applyZoom(); saveState();
+  });
+  document.getElementById('zoomOut').addEventListener('click', function(){
+    state.zoomLevel = clampZoom(state.zoomLevel - ZOOM_STEP);
+    applyZoom(); saveState();
+  });
+  document.getElementById('zoomLabel').addEventListener('click', function(){
+    state.zoomLevel = 1;
+    applyZoom(); saveState();
+  });
+
+  // pinch-to-zoom with two fingers anywhere on the floor
+  (function(){
+    const wrap = document.getElementById('floorWrap');
+    const activePointers = {};
+    let pinchStartDist = null, pinchStartZoom = 1;
+    function dist(a, b){ const dx = a.x-b.x, dy = a.y-b.y; return Math.sqrt(dx*dx + dy*dy); }
+    wrap.addEventListener('pointerdown', function(e){
+      activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      const ids = Object.keys(activePointers);
+      if(ids.length === 2){
+        const pts = ids.map(id => activePointers[id]);
+        pinchStartDist = dist(pts[0], pts[1]);
+        pinchStartZoom = state.zoomLevel;
+      }
+    });
+    wrap.addEventListener('pointermove', function(e){
+      if(!(e.pointerId in activePointers)) return;
+      activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      const ids = Object.keys(activePointers);
+      if(ids.length === 2 && pinchStartDist){
+        const pts = ids.map(id => activePointers[id]);
+        const d = dist(pts[0], pts[1]);
+        state.zoomLevel = clampZoom(pinchStartZoom * (d / pinchStartDist));
+        applyZoom();
+      }
+    });
+    function endPinch(e){
+      delete activePointers[e.pointerId];
+      if(Object.keys(activePointers).length < 2){
+        if(pinchStartDist) saveState();
+        pinchStartDist = null;
+      }
+    }
+    wrap.addEventListener('pointerup', endPinch);
+    wrap.addEventListener('pointercancel', endPinch);
+  })();
+
+  // ================= ROOMS =================
+  function renderRooms(){
+    const row = document.getElementById('roomsRow');
+    row.innerHTML = "";
+    state.rooms.forEach(function(r){
+      const chip = document.createElement('div');
+      chip.className = 'room-chip' + (r.id === state.activeRoomId ? ' active' : '');
+      chip.textContent = r.name;
+      chip.addEventListener('click', function(){
+        if(state.activeRoomId === r.id){
+          document.getElementById('renameRoomInput').value = r.name;
+          openOverlay('overlayManageRoom');
+        } else {
+          state.activeRoomId = r.id;
+          saveState();
+          renderRooms();
+          renderTables();
+        }
+      });
+      row.appendChild(chip);
+    });
+    const addChip = document.createElement('div');
+    addChip.className = 'room-chip addchip';
+    addChip.textContent = '+ Room';
+    addChip.addEventListener('click', function(){
+      document.getElementById('newRoomName').value = "";
+      openOverlay('overlayAddRoom');
+    });
+    row.appendChild(addChip);
+  }
+
+  document.getElementById('btnCreateRoom').addEventListener('click', function(){
+    const name = document.getElementById('newRoomName').value.trim();
+    if(!name){ showToast("Type a room name"); return; }
+    const id = uid();
+    state.rooms.push({ id: id, name: name });
+    state.activeRoomId = id;
+    saveState();
+    closeOverlay('overlayAddRoom');
+    renderRooms(); renderTables();
+  });
+  document.getElementById('btnSaveRoomName').addEventListener('click', function(){
+    const name = document.getElementById('renameRoomInput').value.trim();
+    if(!name){ showToast("Type a room name"); return; }
+    currentRoom().name = name;
+    saveState();
+    closeOverlay('overlayManageRoom');
+    renderRooms();
+  });
+  document.getElementById('btnDeleteRoom').addEventListener('click', function(){
+    if(state.rooms.length <= 1){ showToast("You need at least one room"); return; }
+    askConfirm("Delete room?", "This also deletes every table in this room. This can't be undone.", function(){
+      const r = currentRoom();
+      state.tables = state.tables.filter(t => t.roomId !== r.id);
+      state.rooms = state.rooms.filter(x => x.id !== r.id);
+      state.activeRoomId = state.rooms[0].id;
+      saveState();
+      closeOverlay('overlayManageRoom');
+      renderRooms(); renderTables();
+    });
+  });
+
+  // ================= CANVAS (fixed-pixel positions, auto-grows to fit every table) =================
+  const CANVAS_BASE_WIDTH = 1100, CANVAS_BASE_HEIGHT = 1500;
+  const GRID_CELL = 120, GRID_MARGIN = 80, GRID_COLS = Math.floor((CANVAS_BASE_WIDTH - 2*GRID_MARGIN) / GRID_CELL) + 1;
+  const TABLE_HALF = 45; // keeps a table's own circle from hanging off the canvas edge
+  const COMBINE_THRESHOLD_PX = 95; // real pixel distance, not a percentage — this was the source of the false "collide" bug
+  let canvasW = CANVAS_BASE_WIDTH, canvasH = CANVAS_BASE_HEIGHT;
+
+  function ensureCanvasSize(){
+    let maxX = CANVAS_BASE_WIDTH, maxY = CANVAS_BASE_HEIGHT;
+    state.tables.forEach(function(t){
+      if(t.hidden) return;
+      maxX = Math.max(maxX, t.x + 140);
+      maxY = Math.max(maxY, t.y + 140);
+    });
+    canvasW = maxX; canvasH = maxY;
+    const floorEl = document.getElementById('floor');
+    if(floorEl){ floorEl.style.width = canvasW + 'px'; floorEl.style.height = canvasH + 'px'; }
+  }
+
+  // ================= TABLES =================
+  function renderTables(){
+    ensureCanvasSize();
+    const floor = document.getElementById('floor');
+    Array.from(floor.querySelectorAll('.table-el')).forEach(el => el.remove());
+    const list = tablesInRoom(state.activeRoomId).filter(t => !t.hidden);
+    document.getElementById('emptyHint').style.display = list.length ? 'none' : 'flex';
+
+    list.forEach(function(t){
+      const el = document.createElement('div');
+      el.className = 'table-el shape-' + t.shape + (t.status === 'occupied' ? ' occupied' : '') + (t.merged ? ' merged' : '');
+      el.style.left = t.x + 'px';
+      el.style.top = t.y + 'px';
+      el.dataset.id = t.id;
+
+      const label = document.createElement('div');
+      label.className = 'tablelabel';
+      label.textContent = t.label;
+      el.appendChild(label);
+
+      const sub = document.createElement('div');
+      sub.className = 'subinfo';
+      if(t.status === 'occupied'){
+        const total = tableTotal(t);
+        sub.innerHTML = '<span class="total">' + fmtMoney(total) + '</span><br>' + elapsedString(t.startTime);
+      } else {
+        sub.textContent = 'free';
+      }
+      el.appendChild(sub);
+
+      if(t.items.some(l => !l.sentAt)){
+        const badge = document.createElement('div');
+        badge.className = 'new-order-badge';
+        badge.textContent = '!';
+        badge.title = 'Has items not yet sent to the bar';
+        badge.style.transform = 'scale(' + (1/state.zoomLevel) + ')';
+        el.appendChild(badge);
+      }
+
+      const gear = document.createElement('div');
+      gear.className = 'table-gear';
+      gear.textContent = '⚙';
+      gear.style.transform = 'scale(' + (1/state.zoomLevel) + ')';
+      gear.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
+      gear.addEventListener('click', function(e){ e.stopPropagation(); openTableSettings(t.id); });
+      el.appendChild(gear);
+
+      attachDrag(el, t.id);
+      floor.appendChild(el);
+    });
+  }
+
+  function attachDrag(el, tableId){
+    let startX=0, startY=0, moved=false, pointerDown=false;
+    el.addEventListener('pointerdown', function(e){
+      pointerDown = true; moved = false;
+      startX = e.clientX; startY = e.clientY;
+      try{ if(el.setPointerCapture) el.setPointerCapture(e.pointerId); }catch(err){ /* not supported in this webview, drag still works via document-level events */ }
+    });
+    el.addEventListener('pointermove', function(e){
+      if(!pointerDown) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if(Math.abs(dx) > 6 || Math.abs(dy) > 6){
+        moved = true;
+        el.classList.add('dragging');
+        const floor = document.getElementById('floor');
+        const rect = floor.getBoundingClientRect();
+        // rect reflects the current zoomed/scaled render, so dividing by zoom converts back to the floor's own true pixel space
+        let localX = (e.clientX - rect.left) / state.zoomLevel;
+        let localY = (e.clientY - rect.top) / state.zoomLevel;
+        localX = Math.max(TABLE_HALF, Math.min(canvasW - TABLE_HALF, localX));
+        localY = Math.max(TABLE_HALF, Math.min(canvasH - TABLE_HALF, localY));
+        el.style.left = localX + 'px';
+        el.style.top = localY + 'px';
+        el._newX = localX; el._newY = localY;
+      }
+    });
+    el.addEventListener('pointerup', function(e){
+      pointerDown = false;
+      el.classList.remove('dragging');
+      if(moved){
+        const t = state.tables.find(x => x.id === tableId);
+        if(t && el._newX !== undefined){
+          const SNAP = 20; // small alignment grid — keeps manual drags looking tidy without being restrictive
+          t.x = Math.round(el._newX / SNAP) * SNAP;
+          t.y = Math.round(el._newY / SNAP) * SNAP;
+          saveState();
+          renderTables();
+          maybeProposeCombine(tableId);
+        }
+      } else {
+        openOrderSheet(tableId);
+      }
+    });
+    el.addEventListener('pointercancel', function(){ pointerDown = false; el.classList.remove('dragging'); });
+  }
+
+  function maybeProposeCombine(draggedId){
+    const t = state.tables.find(x => x.id === draggedId);
+    if(!t || t.merged || t.hidden) return;
+    const others = tablesInRoom(t.roomId).filter(o => o.id !== t.id && !o.hidden && !o.merged);
+    let closest = null, closestDist = Infinity;
+    others.forEach(function(o){
+      const dx = t.x - o.x, dy = t.y - o.y;
+      const dist = Math.sqrt(dx*dx + dy*dy); // real pixel distance now, consistent at any zoom level or canvas size
+      if(dist < closestDist){ closestDist = dist; closest = o; }
+    });
+    if(closest && closestDist < COMBINE_THRESHOLD_PX){
+      askConfirm('Combine ' + t.label + ' and ' + closest.label + '?',
+        'They will merge into one table shown as "' + t.label + '-' + closest.label + '" until you split them again from table settings.',
+        function(){ combineTables(t.id, closest.id); });
+    }
+  }
+
+  function combineTables(primaryId, partnerId){
+    const primary = state.tables.find(x => x.id === primaryId);
+    const partner = state.tables.find(x => x.id === partnerId);
+    if(!primary || !partner) return;
+    primary.originalLabel = primary.label;
+    primary.originalX = primary.x; primary.originalY = primary.y;
+    primary.label = primary.label + '-' + partner.label;
+    primary.merged = true;
+    primary.mergedPartnerId = partner.id;
+    primary.x = (primary.x + partner.x) / 2;
+    primary.y = (primary.y + partner.y) / 2;
+    partner.items.forEach(function(it){
+      const existing = primary.items.find(l => l.name === it.name);
+      if(existing) existing.qty += it.qty; else primary.items.push(it);
+    });
+    if(partner.startTime && (!primary.startTime || partner.startTime < primary.startTime)) primary.startTime = partner.startTime;
+    if(primary.items.length){ primary.status = 'occupied'; if(!primary.startTime) primary.startTime = Date.now(); }
+    partner.hidden = true;
+    partner.hiddenBy = primary.id;
+    partner.items = [];
+    partner.status = 'free';
+    saveState();
+    renderTables();
+    showToast('Combined into ' + primary.label);
+  }
+
+  function splitTable(primaryId){
+    const primary = state.tables.find(x => x.id === primaryId);
+    if(!primary || !primary.merged) return;
+    const partner = state.tables.find(x => x.id === primary.mergedPartnerId);
+    if(partner){ partner.hidden = false; partner.hiddenBy = null; }
+    primary.label = primary.originalLabel || primary.label;
+    primary.x = primary.originalX != null ? primary.originalX : primary.x;
+    primary.y = primary.originalY != null ? primary.originalY : primary.y;
+    primary.merged = false;
+    primary.mergedPartnerId = null;
+    primary.originalLabel = null; primary.originalX = null; primary.originalY = null;
+    saveState();
+    renderTables();
+    showToast('Tables split');
+  }
+
+  document.getElementById('btnAddTable').addEventListener('click', function(){
+    const list = tablesInRoom(state.activeRoomId);
+    const nextNum = list.length + 1;
+    const col = list.length % GRID_COLS;
+    const row = Math.floor(list.length / GRID_COLS);
+    const t = {
+      id: uid(), roomId: state.activeRoomId, label: 'T' + nextNum, shape: 'circle',
+      x: GRID_MARGIN + col * GRID_CELL, y: GRID_MARGIN + row * GRID_CELL,
+      status: 'free', startTime: null, items: [],
+      merged:false, mergedPartnerId:null, hidden:false, hiddenBy:null,
+      originalLabel:null, originalX:null, originalY:null
+    };
+    state.tables.push(t);
+    saveState();
+    renderTables();
+  });
+
+  // ---------- table settings ----------
+  function openTableSettings(id){
+    settingsTableId = id;
+    const t = state.tables.find(x => x.id === id);
+    document.getElementById('tsLabel').value = t.label;
+    setShapeToggle(t.shape);
+    document.getElementById('btnSplitTable').style.display = t.merged ? 'block' : 'none';
+    openOverlay('overlayTableSettings');
+  }
+  function setShapeToggle(shape){
+    document.getElementById('tsShapeCircle').classList.toggle('active', shape === 'circle');
+    document.getElementById('tsShapeSquare').classList.toggle('active', shape === 'square');
+  }
+  document.getElementById('tsShapeCircle').addEventListener('click', function(){ setShapeToggle('circle'); });
+  document.getElementById('tsShapeSquare').addEventListener('click', function(){ setShapeToggle('square'); });
+  document.getElementById('btnSaveTableSettings').addEventListener('click', function(){
+    const t = state.tables.find(x => x.id === settingsTableId);
+    if(!t) return;
+    const newLabel = document.getElementById('tsLabel').value.trim();
+    if(newLabel) t.label = newLabel;
+    t.shape = document.getElementById('tsShapeSquare').classList.contains('active') ? 'square' : 'circle';
+    saveState();
+    closeOverlay('overlayTableSettings');
+    renderTables();
+  });
+  document.getElementById('btnSplitTable').addEventListener('click', function(){
+    splitTable(settingsTableId);
+    closeOverlay('overlayTableSettings');
+  });
+  document.getElementById('btnDeleteTable').addEventListener('click', function(){
+    askConfirm("Delete table?", "Any current order on this table will be lost. This can't be undone.", function(){
+      const t = state.tables.find(x => x.id === settingsTableId);
+      if(t && t.merged && t.mergedPartnerId){
+        const partner = state.tables.find(x => x.id === t.mergedPartnerId);
+        if(partner) state.tables = state.tables.filter(x => x.id !== partner.id);
+      }
+      state.tables = state.tables.filter(x => x.id !== settingsTableId);
+      saveState();
+      closeOverlay('overlayTableSettings');
+      renderTables();
+    });
+  });
+
+  // ================= ORDER SHEET =================
+  function openOrderSheet(id){
+    openTableId = id;
+    const t = state.tables.find(x => x.id === id);
+    const room = state.rooms.find(r => r.id === t.roomId);
+    document.getElementById('orderTitle').textContent = 'Table ' + t.label;
+    document.getElementById('orderSub').textContent = room ? room.name : '';
+    document.getElementById('itemInput').value = '';
+    document.getElementById('suggestList').innerHTML = '';
+    document.getElementById('tipInput').value = '';
+    renderOrderLines();
+    updateTimeStrip();
+    openOverlay('overlayOrder');
+    setTimeout(() => document.getElementById('itemInput').focus(), 250);
+  }
+
+  function updateTimeStrip(){
+    const t = state.tables.find(x => x.id === openTableId);
+    if(!t) return;
+    document.getElementById('servedAtTime').textContent = t.startTime ? skopjeTimeString(t.startTime) : '—';
+    document.getElementById('nowTime').textContent = skopjeTimeString(Date.now());
+  }
+
+  function renderOrderLines(){
+    const t = state.tables.find(x => x.id === openTableId);
+    const wrap = document.getElementById('orderLines');
+    wrap.innerHTML = '';
+    if(!t.items.length){
+      wrap.innerHTML = '<div class="empty-order">No items added yet</div>';
+      document.getElementById('orderTotal').textContent = fmtMoney(0);
+      document.getElementById('btnSendToBar').style.display = 'none';
+      return;
+    }
+
+    function buildLine(line){
+      const row = document.createElement('div');
+      row.className = 'order-line' + (line.sentAt ? ' sent' : ' unsent');
+      row.innerHTML =
+        '<div style="flex:1">' +
+          '<div class="ol-name">' + escapeHtml(line.name) + '</div>' +
+          '<div class="ol-price">' + fmtMoney(line.price) + ' each</div>' +
+        '</div>' +
+        '<div class="qty-ctrl">' +
+          '<div class="qty-btn" data-act="dec">−</div>' +
+          '<div class="qty-num">' + line.qty + '</div>' +
+          '<div class="qty-btn" data-act="inc">+</div>' +
+        '</div>' +
+        '<div class="ol-sub">' + fmtMoney(line.price*line.qty) + '</div>' +
+        '<div class="ol-remove" data-act="rm">✕</div>';
+      row.querySelector('[data-act="inc"]').addEventListener('click', function(){ line.qty++; afterOrderChange(); });
+      row.querySelector('[data-act="dec"]').addEventListener('click', function(){
+        line.qty--;
+        if(line.qty <= 0){ t.items = t.items.filter(l => l !== line); }
+        afterOrderChange();
+      });
+      row.querySelector('[data-act="rm"]').addEventListener('click', function(){
+        t.items = t.items.filter(l => l !== line);
+        afterOrderChange();
+      });
+      return row;
+    }
+
+    const unsent = t.items.filter(l => !l.sentAt);
+    const sentGroups = {}; // bucket by exact sentAt timestamp so each "round" stays together
+    t.items.filter(l => l.sentAt).forEach(function(l){
+      if(!sentGroups[l.sentAt]) sentGroups[l.sentAt] = [];
+      sentGroups[l.sentAt].push(l);
+    });
+    const sentTimestamps = Object.keys(sentGroups).map(Number).sort((a,b) => a-b);
+
+    if(unsent.length){
+      const hdr = document.createElement('div');
+      hdr.className = 'order-group-hdr new';
+      hdr.textContent = '🆕 New — not sent to the bar yet';
+      wrap.appendChild(hdr);
+      unsent.forEach(function(line){ wrap.appendChild(buildLine(line)); });
+    }
+    sentTimestamps.forEach(function(ts, idx){
+      const hdr = document.createElement('div');
+      hdr.className = 'order-group-hdr sent';
+      hdr.textContent = '✓ Sent at ' + skopjeTimeString(ts) + (sentTimestamps.length > 1 ? ' (round ' + (idx+1) + ')' : '');
+      wrap.appendChild(hdr);
+      sentGroups[ts].forEach(function(line){ wrap.appendChild(buildLine(line)); });
+    });
+
+    document.getElementById('orderTotal').textContent = fmtMoney(tableTotal(t));
+    document.getElementById('btnSendToBar').style.display = unsent.length ? 'block' : 'none';
+  }
+
+  document.getElementById('btnSendToBar').addEventListener('click', function(){
+    const t = state.tables.find(x => x.id === openTableId);
+    const now = Date.now();
+    let count = 0;
+    t.items.forEach(function(l){ if(!l.sentAt){ l.sentAt = now; count++; } });
+    if(!count) return;
+    saveState();
+    renderOrderLines();
+    renderTables();
+    showToast('Sent ' + count + ' item' + (count>1?'s':'') + ' to the bar ✓');
+  });
+
+  function afterOrderChange(){
+    const t = state.tables.find(x => x.id === openTableId);
+    if(t.items.length && t.status !== 'occupied'){ t.status = 'occupied'; t.startTime = Date.now(); }
+    if(!t.items.length){ t.status = 'free'; t.startTime = null; }
+    saveState();
+    renderOrderLines();
+    renderTables();
+    updateTimeStrip();
+  }
+
+  document.getElementById('itemInput').addEventListener('input', function(e){
+    const q = e.target.value.trim().toLowerCase();
+    const listEl = document.getElementById('suggestList');
+    listEl.innerHTML = '';
+    if(!q) return;
+    let matches = state.menu.filter(m => m.name.toLowerCase().startsWith(q));
+    if(!matches.length) matches = state.menu.filter(m => m.name.toLowerCase().includes(q));
+    if(!matches.length){
+      listEl.innerHTML = '<div class="no-match">No menu item matches "' + escapeHtml(e.target.value) + '"</div>';
+      return;
+    }
+    matches.slice(0,8).forEach(function(m){
+      const row = document.createElement('div');
+      row.className = 'suggest-item';
+      row.innerHTML = '<span>' + escapeHtml(m.name) + '</span><span class="p">' + fmtMoney(m.price) + '</span>';
+      row.addEventListener('click', function(){
+        addItemToOrder(m);
+        document.getElementById('itemInput').value = '';
+        listEl.innerHTML = '';
+        document.getElementById('itemInput').focus();
+      });
+      listEl.appendChild(row);
+    });
+  });
+  document.getElementById('itemInput').addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){
+      const q = e.target.value.trim().toLowerCase();
+      if(!q) return;
+      const matches = state.menu.filter(m => m.name.toLowerCase().startsWith(q));
+      if(matches.length === 1){
+        addItemToOrder(matches[0]);
+        e.target.value = '';
+        document.getElementById('suggestList').innerHTML = '';
+      }
+    }
+  });
+  function addItemToOrder(menuItem){
+    const t = state.tables.find(x => x.id === openTableId);
+    // only stack onto a line that hasn't been sent to the bar yet — a repeat order after the first
+    // round already went out must never silently merge into it, or the bartender loses track
+    const existing = t.items.find(l => l.name === menuItem.name && !l.sentAt);
+    if(existing) existing.qty++;
+    else t.items.push({ id: uid(), name: menuItem.name, price: menuItem.price, qty: 1, sentAt: null });
+    afterOrderChange();
+  }
+
+  document.getElementById('btnMarkPaid').addEventListener('click', function(){
+    const t = state.tables.find(x => x.id === openTableId);
+    if(!t.items.length){ showToast("No order on this table yet"); return; }
+    const room = state.rooms.find(r => r.id === t.roomId);
+    const tipVal = parseFloat(document.getElementById('tipInput').value);
+    const tip = isNaN(tipVal) || tipVal < 0 ? 0 : tipVal;
+    const paidAt = Date.now();
+    const day = state.shift.active ? state.shift.shiftDate : skopjeDateString(paidAt);
+    const sessionId = state.shift.active ? state.shift.sessionId : null;
+    state.history.unshift({ id: uid(), tableLabel: t.label, roomName: room ? room.name : '', total: tableTotal(t), tip: tip, servedAt: t.startTime, paidAt: paidAt, day: day, sessionId: sessionId });
+    state.history = state.history.slice(0, 200);
+    t.items = []; t.status = 'free'; t.startTime = null;
+    document.getElementById('tipInput').value = '';
+    saveState();
+    closeOverlay('overlayOrder');
+    renderTables();
+    showToast("Table " + t.label + " marked paid ✓" + (tip>0 ? " (+" + fmtMoney(tip) + " tip)" : ""));
+  });
+  document.getElementById('btnClearNoSave').addEventListener('click', function(){
+    const t = state.tables.find(x => x.id === openTableId);
+    askConfirm("Empty this table?", "This clears the order without adding it to history. Use this only if you opened the wrong table by mistake.", function(){
+      t.items = []; t.status = 'free'; t.startTime = null;
+      saveState();
+      closeOverlay('overlayOrder');
+      renderTables();
+    });
+  });
+
+  // ================= MENU =================
+  document.getElementById('navMenu').addEventListener('click', function(){ renderMenuList(); openOverlay('overlayMenu'); setActiveNav('navMenu'); });
+  function renderMenuList(){
+    const wrap = document.getElementById('menuList');
+    wrap.innerHTML = '';
+    if(!state.menu.length){ wrap.innerHTML = '<div class="hist-empty">No menu items yet — add your first one below.</div>'; return; }
+    state.menu.slice().sort((a,b) => a.name.localeCompare(b.name)).forEach(function(m){
+      const row = document.createElement('div');
+      row.className = 'menu-item-row';
+      row.innerHTML = '<div class="mi-name">' + escapeHtml(m.name) + '</div><div class="mi-price">' + fmtMoney(m.price) + '</div><div class="mi-del">✕</div>';
+      row.querySelector('.mi-del').addEventListener('click', function(){
+        askConfirm("Remove item?", '"' + m.name + '" will be removed from the menu.', function(){
+          state.menu = state.menu.filter(x => x.id !== m.id);
+          saveState();
+          renderMenuList();
+        });
+      });
+      wrap.appendChild(row);
+    });
+  }
+  document.getElementById('btnAddMenuItem').addEventListener('click', function(){
+    const nameInput = document.getElementById('menuNewName');
+    const priceInput = document.getElementById('menuNewPrice');
+    const name = nameInput.value.trim();
+    const price = parseFloat(priceInput.value);
+    if(!name){ showToast("Type an item name"); return; }
+    if(isNaN(price) || price < 0){ showToast("Enter a valid price"); return; }
+    if(state.menu.some(m => m.name.toLowerCase() === name.toLowerCase())){ showToast("That item already exists"); return; }
+    state.menu.push({ id: uid(), name: name, price: price });
+    nameInput.value = ''; priceInput.value = '';
+    saveState();
+    renderMenuList();
+    showToast("Added " + name);
+  });
+
+  // ================= HISTORY =================
+  document.getElementById('moreHistory').addEventListener('click', function(){ closeOverlay('overlayMore'); renderHistory(); openOverlay('overlayHistory'); });
+  function renderHistory(){
+    const wrap = document.getElementById('historyList');
+    wrap.innerHTML = '';
+    if(!state.history.length){ wrap.innerHTML = '<div class="hist-empty">Nothing marked paid yet.</div>'; return; }
+    state.history.forEach(function(h){
+      const row = document.createElement('div');
+      row.className = 'hist-row';
+      row.innerHTML = '<div class="h-top"><span>' + escapeHtml(h.tableLabel) + ' · ' + escapeHtml(h.roomName) + '</span>' +
+        '<span style="display:flex;align-items:center;gap:8px;">' + fmtMoney(h.total) + (h.tip ? ' <span style="color:var(--free)">+' + fmtMoney(h.tip) + ' tip</span>' : '') + '<span class="row-del" data-del="' + h.id + '">Delete</span></span></div>' +
+        '<div class="h-bottom">Served ' + skopjeDateTimeString(h.servedAt) + ' → paid ' + skopjeDateTimeString(h.paidAt) + '</div>';
+      row.querySelector('[data-del]').addEventListener('click', function(){
+        askConfirm('Delete this entry?', h.tableLabel + ' · ' + fmtMoney(h.total) + '. This can\'t be undone.', function(){
+          state.history = state.history.filter(x => x.id !== h.id);
+          saveState();
+          renderHistory();
+        });
+      });
+      wrap.appendChild(row);
+    });
+  }
+
+  // ================= EARNINGS =================
+  document.getElementById('navEarnings').addEventListener('click', function(){ renderEarnings(); openOverlay('overlayEarnings'); setActiveNav('navEarnings'); });
+  function renderEarnings(){
+    const earnEl = document.getElementById('earnToday');
+    if(state.shift.active){
+      let sales = 0, tips = 0;
+      state.history.forEach(function(h){
+        if(h.sessionId === state.shift.sessionId){ sales += h.total; tips += (h.tip || 0); }
+      });
+      earnEl.innerHTML =
+        '<div class="et-row"><span class="et-label">Current shift · sales</span><span class="et-val">' + fmtMoney(sales) + '</span></div>' +
+        '<div class="et-row"><span class="et-label">Current shift · tips</span><span class="et-val">' + fmtMoney(tips) + '</span></div>' +
+        '<div class="et-row total"><span class="et-label">Total this shift</span><span class="et-val">' + fmtMoney(sales+tips) + '</span></div>';
+    } else {
+      earnEl.innerHTML =
+        '<div class="et-row"><span class="et-label">No shift running</span><span class="et-val">—</span></div>' +
+        '<div class="sheet-sub" style="margin-top:2px;">Start your shift to begin tracking earnings from zero. Past shifts are below.</div>';
+    }
+
+    // past shifts, most recent first — totals locked in at the moment each shift ended
+    const wrap = document.getElementById('earnDaysList');
+    wrap.innerHTML = '';
+    if(!state.shiftHistory.length){
+      wrap.innerHTML = '<div class="hist-empty">No completed shifts yet.</div>';
+    } else {
+      state.shiftHistory.forEach(function(h){
+        const sales = h.salesTotal || 0, tips = h.tipsTotal || 0;
+        const row = document.createElement('div');
+        row.className = 'earn-day-row';
+        row.innerHTML = '<span class="ed-date">' + niceDateLabel(h.date) + '</span>' +
+          '<span class="ed-nums">Sales ' + fmtMoney(sales) + ' · Tips ' + fmtMoney(tips) + ' · Total ' + fmtMoney(sales+tips) + '</span>';
+        wrap.appendChild(row);
+      });
+    }
+
+    // anything paid while NOT clocked in — kept visible but separate, so it's never silently lost
+    const offShift = state.history.filter(h => !h.sessionId);
+    const offWrap = document.getElementById('earnOffShift');
+    if(!offShift.length){
+      offWrap.innerHTML = '';
+    } else {
+      let offSales = 0, offTips = 0;
+      offShift.forEach(function(h){ offSales += h.total; offTips += (h.tip||0); });
+      offWrap.innerHTML =
+        '<label class="f-label">Paid while not clocked in (' + offShift.length + ')</label>' +
+        '<div class="earn-day-row"><span class="ed-date">Not tied to a shift</span><span class="ed-nums">Sales ' + fmtMoney(offSales) + ' · Tips ' + fmtMoney(offTips) + '</span></div>';
+    }
+  }
+
+  // ================= BACKUP & RESTORE =================
+  document.getElementById('moreBackup').addEventListener('click', function(){
+    closeOverlay('overlayMore');
+    renderBackupInfo();
+    openOverlay('overlayBackup');
+  });
+  function renderBackupInfo(){
+    document.getElementById('lastBackupInfo').textContent = state.lastBackupAt
+      ? ('Last backed up: ' + skopjeDateTimeString(state.lastBackupAt))
+      : 'You have not made a backup yet.';
+  }
+  document.getElementById('btnDownloadBackup').addEventListener('click', function(){
+    try{
+      state.lastBackupAt = Date.now();
+      const dataStr = JSON.stringify(state, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = skopjeDateString(Date.now()) + '_' + new Date().toTimeString().slice(0,5).replace(':','');
+      a.href = url;
+      a.download = 'cafe-floor-backup_' + stamp + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      saveState();
+      renderBackupInfo();
+      showToast('Backup downloaded — now save it to Drive/WhatsApp/email');
+    }catch(e){
+      console.error(e);
+      showToast("Couldn't create the backup file");
+    }
+  });
+  document.getElementById('btnRestoreBackup').addEventListener('click', function(){
+    document.getElementById('restoreFileInput').click();
+  });
+  document.getElementById('restoreFileInput').addEventListener('change', function(e){
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(){
+      let parsed;
+      try{ parsed = JSON.parse(reader.result); }
+      catch(err){ showToast('That file is not a valid backup'); return; }
+      if(!parsed || !Array.isArray(parsed.rooms) || !parsed.rooms.length){
+        showToast('That file is not a valid backup');
+        return;
+      }
+      askConfirm('Restore this backup?', 'This replaces everything currently in the app — tables, orders, notes, shifts — with the contents of this backup file. This cannot be undone.', function(){
+        state = Object.assign(defaultState(), parsed);
+        if(!state.notes) state.notes = [];
+        if(!state.shift) state.shift = { active:false, startTs:null, shiftDate:null, sessionId:null };
+        if(state.shift.sessionId === undefined) state.shift.sessionId = null;
+        if(!state.shiftHistory) state.shiftHistory = [];
+        if(!state.settings) state.settings = { standardShiftHours: 8 };
+        migrateLegacyPositions(parsed);
+        openTableId = null; settingsTableId = null;
+        saveState();
+        renderAll();
+        closeAllOverlays();
+        setActiveNav('navFloor');
+        showToast('Backup restored ✓');
+      });
+    };
+    reader.onerror = function(){ showToast("Couldn't read that file"); };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  // ================= LAYOUT TOOLS =================
+  document.getElementById('moreLayout').addEventListener('click', function(){ closeOverlay('overlayMore'); renderLayoutInfo(); openOverlay('overlayLayout'); });
+  function renderLayoutInfo(){
+    const el = document.getElementById('layoutSavedInfo');
+    el.textContent = state.layoutSnapshotSavedAt ? ('Last saved: ' + skopjeDateTimeString(state.layoutSnapshotSavedAt)) : 'No layout saved yet.';
+  }
+  document.getElementById('btnSaveLayout').addEventListener('click', function(){
+    askConfirm('Save this arrangement?', 'This becomes your "clean" layout. You can reset back to it any time.', function(){
+      const snap = {};
+      state.tables.forEach(function(t){
+        if(t.merged){
+          snap[t.id] = { x: t.originalX!=null?t.originalX:t.x, y: t.originalY!=null?t.originalY:t.y, shape:t.shape, label: t.originalLabel||t.label, roomId:t.roomId };
+        } else {
+          snap[t.id] = { x:t.x, y:t.y, shape:t.shape, label:t.label, roomId:t.roomId };
+        }
+      });
+      state.layoutSnapshot = snap;
+      state.layoutSnapshotSavedAt = Date.now();
+      saveState();
+      renderLayoutInfo();
+      showToast('Layout saved ✓');
+    });
+  });
+  document.getElementById('btnResetLayout').addEventListener('click', function(){
+    if(!state.layoutSnapshot){ showToast('No saved layout yet'); return; }
+    askConfirm('Reset to saved layout?', 'Tables snap back to their saved positions, shapes and labels, and any combined tables split apart. Current orders on tables are kept.', function(){
+      state.tables.forEach(function(primary){
+        if(primary.merged && primary.mergedPartnerId){
+          const partner = state.tables.find(x => x.id === primary.mergedPartnerId);
+          if(partner){ partner.hidden = false; partner.hiddenBy = null; }
+          primary.merged = false; primary.mergedPartnerId = null;
+        }
+      });
+      state.tables.forEach(function(t){
+        const snap = state.layoutSnapshot[t.id];
+        if(snap){
+          t.x = snap.x; t.y = snap.y; t.shape = snap.shape; t.label = snap.label; t.roomId = snap.roomId;
+          t.hidden = false; t.hiddenBy = null;
+        }
+      });
+      state.tables.forEach(function(t){ t.originalLabel=null; t.originalX=null; t.originalY=null; });
+      saveState();
+      renderRooms();
+      renderTables();
+      closeOverlay('overlayLayout');
+      showToast('Layout restored ✓');
+    });
+  });
+  document.getElementById('btnTidyRoom').addEventListener('click', function(){
+    const list = tablesInRoom(state.activeRoomId).filter(t => !t.hidden);
+    if(!list.length){ showToast('No tables in this room yet'); return; }
+    askConfirm('Align tables in this room?', 'Every table snaps into a neat grid. Labels, shapes, and any active orders stay exactly the same — only positions change.', function(){
+      list.forEach(function(t, idx){
+        const col = idx % GRID_COLS, row = Math.floor(idx / GRID_COLS);
+        t.x = GRID_MARGIN + col * GRID_CELL;
+        t.y = GRID_MARGIN + row * GRID_CELL;
+      });
+      saveState();
+      renderTables();
+      closeOverlay('overlayLayout');
+      showToast('Tables aligned ✓');
+    });
+  });
+
+  // ================= NOTES =================
+  document.getElementById('moreNotes').addEventListener('click', function(){ closeOverlay('overlayMore'); renderNotes(); openOverlay('overlayNotes'); });
+  document.getElementById('btnAddNote').addEventListener('click', function(){
+    const ta = document.getElementById('noteInput');
+    const text = ta.value.trim();
+    if(!text){ showToast("Write something first"); return; }
+    state.notes.unshift({ id: uid(), text: text, ts: Date.now() });
+    ta.value = '';
+    saveState();
+    renderNotes();
+  });
+  function renderNotes(){
+    const wrap = document.getElementById('notesList');
+    wrap.innerHTML = '';
+    if(!state.notes.length){ wrap.innerHTML = '<div class="hist-empty">No notes yet.</div>'; return; }
+    state.notes.forEach(function(n){
+      const row = document.createElement('div');
+      row.className = 'note-row';
+      row.innerHTML = '<div class="n-text">' + escapeHtml(n.text) + '</div>' +
+        '<div class="n-meta"><span>' + skopjeDateTimeString(n.ts) + '</span><span class="n-del">Delete</span></div>';
+      row.querySelector('.n-del').addEventListener('click', function(){
+        state.notes = state.notes.filter(x => x.id !== n.id);
+        saveState();
+        renderNotes();
+      });
+      wrap.appendChild(row);
+    });
+  }
+
+  // ================= SHIFT TRACKER =================
+  document.getElementById('navShift').addEventListener('click', function(){
+    document.getElementById('standardHours').value = state.settings.standardShiftHours;
+    renderShift();
+    openOverlay('overlayShift');
+    setActiveNav('navShift');
+  });
+  document.getElementById('standardHours').addEventListener('change', function(e){
+    const v = parseFloat(e.target.value);
+    state.settings.standardShiftHours = isNaN(v) ? 8 : v;
+    saveState();
+    renderShift();
+  });
+  document.getElementById('btnShiftToggle').addEventListener('click', function(){
+    if(!state.shift.active){
+      askConfirm('Start your shift now?', 'This clocks you in at the current time and starts tracking today\'s earnings from zero.', function(){
+        const now = Date.now();
+        state.shift.active = true;
+        state.shift.startTs = now;
+        state.shift.shiftDate = skopjeDateString(now);
+        state.shift.sessionId = uid();
+        saveState();
+        showToast('Shift started at ' + skopjeTimeString(now));
+        updateShiftIndicator();
+        renderShift();
+      });
+    } else {
+      askConfirm('End your shift now?', 'This clocks you out, locks in today\'s earnings into your history, and resets the current-shift tracker to zero for next time.', function(){
+        const now = Date.now();
+        const sessionId = state.shift.sessionId;
+        let salesTotal = 0, tipsTotal = 0;
+        state.history.forEach(function(h){
+          if(h.sessionId === sessionId){ salesTotal += h.total; tipsTotal += (h.tip || 0); }
+        });
+        const entry = {
+          id: uid(),
+          date: state.shift.shiftDate,
+          startTs: state.shift.startTs,
+          endTs: now,
+          durationMs: now - state.shift.startTs,
+          sessionId: sessionId,
+          salesTotal: salesTotal,
+          tipsTotal: tipsTotal
+        };
+        state.shiftHistory.unshift(entry);
+        state.shift.active = false;
+        state.shift.startTs = null;
+        state.shift.shiftDate = null;
+        state.shift.sessionId = null;
+        saveState();
+        showToast('Shift ended — ' + durationString(entry.durationMs) + ', ' + fmtMoney(salesTotal+tipsTotal) + ' earned');
+        updateShiftIndicator();
+        renderShift();
+      });
+    }
+  });
+  function updateShiftIndicator(){
+    const icon = document.querySelector('#navShift .ni-icon');
+    if(icon) icon.textContent = state.shift.active ? '🟢' : '⏳';
+  }
+
+  function renderShift(){
+    const statusEl = document.getElementById('shiftStatus');
+    const toggleBtn = document.getElementById('btnShiftToggle');
+    if(state.shift.active){
+      const elapsed = Date.now() - state.shift.startTs;
+      statusEl.innerHTML =
+        '<div class="ss-label">Shift in progress</div>' +
+        '<div class="ss-time">' + durationString(elapsed) + '</div>' +
+        '<div class="ss-sub">Started ' + skopjeTimeString(state.shift.startTs) + ' on ' + niceDateLabel(state.shift.shiftDate) + '</div>';
+      toggleBtn.textContent = 'End shift';
+      toggleBtn.className = 'btn btn-danger';
+    } else {
+      statusEl.innerHTML =
+        '<div class="ss-label">No active shift</div>' +
+        '<div class="ss-time">—</div>' +
+        '<div class="ss-sub">Tap below when you clock in</div>';
+      toggleBtn.textContent = 'Start shift';
+      toggleBtn.className = 'btn btn-free';
+    }
+
+    // month summary based on shift dates (anchored to start date, no midnight split)
+    const now = new Date();
+    const curMonthKey = skopjeDateString(now.getTime()).slice(0,7); // YYYY-MM
+    let totalMs = 0, overtimeMs = 0;
+    const stdMs = (state.settings.standardShiftHours || 8) * 3600000;
+    state.shiftHistory.forEach(function(h){
+      if(h.date && h.date.slice(0,7) === curMonthKey){
+        totalMs += h.durationMs;
+        if(h.durationMs > stdMs) overtimeMs += (h.durationMs - stdMs);
+      }
+    });
+    document.getElementById('monthSummary').innerHTML =
+      '<div class="sms-row"><span>This month total worked</span><b>' + durationString(totalMs) + '</b></div>' +
+      '<div class="sms-row overtime-row"><span>⚠ Overtime (beyond ' + (state.settings.standardShiftHours||8) + 'h/shift)</span><b>' + durationString(overtimeMs) + '</b></div>';
+
+    const listWrap = document.getElementById('shiftHistoryList');
+    listWrap.innerHTML = '';
+    if(!state.shiftHistory.length){
+      listWrap.innerHTML = '<div class="hist-empty">No shifts logged yet.</div>';
+    } else {
+      state.shiftHistory.forEach(function(h){
+        const over = Math.max(0, h.durationMs - stdMs);
+        const row = document.createElement('div');
+        row.className = 'hist-row';
+        row.innerHTML =
+          '<div class="h-top"><span>' + niceDateLabel(h.date) + '</span>' +
+            '<span style="display:flex;align-items:center;gap:8px;">' + durationString(h.durationMs) + '<span class="row-del" data-del="' + h.id + '">Delete</span></span></div>' +
+          '<div class="h-bottom">' + skopjeTimeString(h.startTs) + ' → ' + skopjeTimeString(h.endTs) +
+          (over > 0 ? ' · overtime ' + durationString(over) : '') + '</div>';
+        row.querySelector('[data-del]').addEventListener('click', function(){
+          askConfirm('Delete this shift?', niceDateLabel(h.date) + ', ' + durationString(h.durationMs) + '. This can\'t be undone.', function(){
+            state.shiftHistory = state.shiftHistory.filter(x => x.id !== h.id);
+            saveState();
+            renderShift();
+          });
+        });
+        listWrap.appendChild(row);
+      });
+    }
+  }
+
+  // ================= CALCULATOR =================
+  const calcButtons = [
+    {t:'C', cls:'op'}, {t:'⌫', cls:'op'}, {t:'%', cls:'op'}, {t:'÷', cls:'op'},
+    {t:'7'}, {t:'8'}, {t:'9'}, {t:'×', cls:'op'},
+    {t:'4'}, {t:'5'}, {t:'6'}, {t:'−', cls:'op'},
+    {t:'1'}, {t:'2'}, {t:'3'}, {t:'+', cls:'op'},
+    {t:'0', cls:'wide'}, {t:'.'}, {t:'=', cls:'eq'}
+  ];
+  let calcCur = '0', calcPrev = '', calcOp = null, calcResetNext = false;
+
+  function buildCalc(){
+    const grid = document.getElementById('calcGrid');
+    grid.innerHTML = '';
+    calcButtons.forEach(function(b){
+      const btn = document.createElement('div');
+      btn.className = 'calc-btn' + (b.cls ? ' ' + b.cls : '');
+      btn.textContent = b.t;
+      btn.addEventListener('click', function(){ handleCalcPress(b.t); });
+      grid.appendChild(btn);
+    });
+  }
+  function handleCalcPress(t){
+    if(t === 'C'){ calcCur = '0'; calcPrev=''; calcOp=null; calcResetNext=false; }
+    else if(t === '⌫'){ calcCur = calcCur.length>1 ? calcCur.slice(0,-1) : '0'; }
+    else if(t === '.'){ if(calcResetNext){ calcCur='0'; calcResetNext=false; } if(!calcCur.includes('.')) calcCur += '.'; }
+    else if(t === '%'){ calcCur = String(parseFloat(calcCur||'0') / 100); }
+    else if(['÷','×','−','+'].includes(t)){
+      if(calcOp && !calcResetNext){ doCalcEquals(); }
+      calcPrev = calcCur + ' ' + t;
+      calcOp = t;
+      calcResetNext = true;
+    }
+    else if(t === '='){ doCalcEquals(); }
+    else { // digit
+      if(calcResetNext || calcCur === '0'){ calcCur = t; calcResetNext = false; }
+      else { calcCur += t; }
+    }
+    updateCalcDisplay();
+  }
+  function doCalcEquals(){
+    if(!calcOp) return;
+    const a = parseFloat(calcPrev.split(' ')[0]);
+    const b = parseFloat(calcCur);
+    let res = 0;
+    if(calcOp === '÷') res = b === 0 ? 0 : a / b;
+    else if(calcOp === '×') res = a * b;
+    else if(calcOp === '−') res = a - b;
+    else if(calcOp === '+') res = a + b;
+    calcPrev = calcPrev + ' ' + calcCur + ' =';
+    calcCur = String(Math.round(res * 100) / 100);
+    calcOp = null;
+    calcResetNext = true;
+  }
+  function updateCalcDisplay(){
+    document.getElementById('calcPrev').textContent = calcPrev || '\u00A0';
+    document.getElementById('calcCur').textContent = calcCur;
+  }
+  document.getElementById('moreCalc').addEventListener('click', function(){
+    closeOverlay('overlayMore');
+    calcCur='0'; calcPrev=''; calcOp=null; calcResetNext=false;
+    updateCalcDisplay();
+    openOverlay('overlayCalc');
+  });
+
+  // ---------- periodic refresh ----------
+  setInterval(function(){
+    if(!document.getElementById('overlayOrder').classList.contains('show')) renderTables();
+    else updateTimeStrip();
+    if(document.getElementById('overlayShift').classList.contains('show')) renderShift();
+  }, 15000);
+
+  document.getElementById('moreReset').addEventListener('click', function(){
+    closeOverlay('overlayMore');
+    askConfirm('Reset all app data?', 'This wipes every order, note, shift record and earnings history, and resets your rooms/tables back to your saved default layout. Your menu and prices are kept. This cannot be undone.', function(){
+      askConfirm('Really wipe everything?', 'Last check — this deletes ALL saved data on this device right now, except your menu and prices, which stay untouched.', function(){
+        const keepMenu = state.menu;
+        state = defaultState();
+        state.menu = keepMenu;
+        openTableId = null; settingsTableId = null;
+        saveState();
+        renderAll();
+        closeAllOverlays();
+        setActiveNav('navFloor');
+        showToast('App reset — your menu was kept');
+      });
+    });
+  });
+
+  function renderAll(){
+    renderRooms();
+    renderTables();
+    buildCalc();
+    updateShiftIndicator();
+    applyZoom();
+  }
+
+  loadState();
+})();
+</script>
+</body>
+</html>
