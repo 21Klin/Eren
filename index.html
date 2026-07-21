@@ -116,22 +116,20 @@
   .table-el .subinfo.total{ font-weight:700; color:var(--cream); font-size:11px; }
 
   .table-gear{
-    position:absolute; top:-10px; right:-10px;
-    width:30px; height:30px; border-radius:50%;
+    position:absolute; top:-9px; right:-9px;
+    width:26px; height:26px; border-radius:50%;
     background:var(--surface-3); border:1.5px solid var(--amber);
     display:flex; align-items:center; justify-content:center;
-    font-size:15px; color:var(--cream);
+    font-size:13px; color:var(--cream);
     cursor:pointer;
-    transform-origin: top right;
     box-shadow:0 2px 6px rgba(0,0,0,0.4);
   }
   .new-order-badge{
-    position:absolute; top:-10px; left:-10px;
-    width:20px; height:20px; border-radius:50%;
+    position:absolute; top:-9px; left:-9px;
+    width:18px; height:18px; border-radius:50%;
     background:var(--amber); color:#241A08;
     display:flex; align-items:center; justify-content:center;
-    font-size:11px; font-weight:800;
-    transform-origin: top left;
+    font-size:10px; font-weight:800;
     animation: pulse 1.4s infinite;
     pointer-events:none;
   }
@@ -420,7 +418,7 @@
     </div>
     <div class="empty-hint" id="emptyHint" style="display:none;">
       <div class="big">No tables in this room yet</div>
-      <div class="small">Tap the + button to drop a table on the floor, then drag it wherever you want. Drag one table onto another to combine them.</div>
+      <div class="small">Tap the + button to drop a table on the floor, then drag it wherever you want. Drag one table onto another to combine them. Press and hold any table for its settings.</div>
     </div>
     <div class="legend-pill"><span><i class="lf"></i>Free</span><span><i class="lo"></i>Occupied</span></div>
     <div class="zoom-controls">
@@ -454,7 +452,7 @@
       <div class="more-row" id="moreBackup"><span class="mr-icon">💾</span><span class="mr-label">Backup & restore</span><span class="mr-sub">Save a copy outside this browser</span></div>
       <div class="more-row" id="moreLayout"><span class="mr-icon">🧱</span><span class="mr-label">Layout tools</span><span class="mr-sub">Save / reset your table arrangement</span></div>
       <div class="more-row danger" id="moreReset"><span class="mr-icon">⚠</span><span class="mr-label">Reset app data</span><span class="mr-sub">Wipe everything except your menu</span></div>
-      <div class="more-footer">Programmed by Eren Murtishi<br><span style="opacity:0.6;">build check: ROUNDS-TIDY-GEAR-1</span></div>
+      <div class="more-footer">Programmed by Eren Murtishi<br><span style="opacity:0.6;">build check: LONGPRESS-GEAR-FIX-1</span></div>
     </div>
   </div>
 </div>
@@ -1000,8 +998,6 @@
   function applyZoom(){
     document.getElementById('floor').style.transform = 'scale(' + state.zoomLevel + ')';
     document.getElementById('zoomLabel').textContent = Math.round(state.zoomLevel * 100) + '%';
-    const inv = 1 / state.zoomLevel;
-    document.querySelectorAll('.table-gear, .new-order-badge').forEach(function(el){ el.style.transform = 'scale(' + inv + ')'; });
   }
   document.getElementById('zoomIn').addEventListener('click', function(){
     state.zoomLevel = clampZoom(state.zoomLevel + ZOOM_STEP);
@@ -1169,14 +1165,13 @@
         badge.className = 'new-order-badge';
         badge.textContent = '!';
         badge.title = 'Has items not yet sent to the bar';
-        badge.style.transform = 'scale(' + (1/state.zoomLevel) + ')';
         el.appendChild(badge);
       }
 
       const gear = document.createElement('div');
       gear.className = 'table-gear';
       gear.textContent = '⚙';
-      gear.style.transform = 'scale(' + (1/state.zoomLevel) + ')';
+      gear.title = 'Table settings (or press and hold the table)';
       gear.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
       gear.addEventListener('click', function(e){ e.stopPropagation(); openTableSettings(t.id); });
       el.appendChild(gear);
@@ -1187,16 +1182,25 @@
   }
 
   function attachDrag(el, tableId){
-    let startX=0, startY=0, moved=false, pointerDown=false;
+    let startX=0, startY=0, moved=false, pointerDown=false, longPressTimer=null, longPressFired=false;
     el.addEventListener('pointerdown', function(e){
-      pointerDown = true; moved = false;
+      pointerDown = true; moved = false; longPressFired = false;
       startX = e.clientX; startY = e.clientY;
       try{ if(el.setPointerCapture) el.setPointerCapture(e.pointerId); }catch(err){ /* not supported in this webview, drag still works via document-level events */ }
+      longPressTimer = setTimeout(function(){
+        if(pointerDown && !moved){
+          longPressFired = true;
+          pointerDown = false;
+          el.classList.remove('dragging');
+          openTableSettings(tableId);
+        }
+      }, 480);
     });
     el.addEventListener('pointermove', function(e){
       if(!pointerDown) return;
       const dx = e.clientX - startX, dy = e.clientY - startY;
       if(Math.abs(dx) > 6 || Math.abs(dy) > 6){
+        if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; }
         moved = true;
         el.classList.add('dragging');
         const floor = document.getElementById('floor');
@@ -1212,6 +1216,8 @@
       }
     });
     el.addEventListener('pointerup', function(e){
+      if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer = null; }
+      if(longPressFired) return; // settings already opened by the long-press itself
       pointerDown = false;
       el.classList.remove('dragging');
       if(moved){
@@ -1228,7 +1234,7 @@
         openOrderSheet(tableId);
       }
     });
-    el.addEventListener('pointercancel', function(){ pointerDown = false; el.classList.remove('dragging'); });
+    el.addEventListener('pointercancel', function(){ if(longPressTimer){ clearTimeout(longPressTimer); longPressTimer=null; } pointerDown = false; el.classList.remove('dragging'); });
   }
 
   function maybeProposeCombine(draggedId){
